@@ -1,0 +1,24 @@
+{
+  "updatedAt": "2026-09-27T12:00:00+02:00",
+  "weekLabel": "KW39 Platzhalter",
+  "dayType": "training",
+  "macros": {
+    "training": { "kcal": 2400, "protein_g": 180, "carbs_g": 220, "fat_g": 70 },
+    "rest": { "kcal": 2000, "protein_g": 160, "carbs_g": 160, "fat_g": 65 }
+  },
+  "micros": {
+    "salt_g_max": 6,
+    "sugar_g_hard": 25,
+    "sugar_g_soft_max": 40,
+    "fiber_g_min": 30,
+    "vitamin_c_mg": 110,
+    "calcium_mg": 1000,
+    "iron_mg": 10,
+    "magnesium_mg": 350,
+    "potassium_mg": 3500,
+    "vitamin_d_ug": 20,
+    "zinc_mg": 14
+  },
+  "source": "personal-trainer",
+  "notes": "Platzhalter — PT liefert echte Wochenwerte später"
+}

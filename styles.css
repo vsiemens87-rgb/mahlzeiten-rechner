@@ -684,3 +684,69 @@ dialog.sheet:not([open]) {
   font-size: 11px;
   color: var(--text-2);
 }
+
+/* —— v2.1.0 Ziel-Sync —— */
+.targets-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  border: 1px solid rgba(255, 122, 89, 0.35);
+}
+.targets-banner[hidden] { display: none !important; }
+.targets-banner-body strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.targets-banner-meta {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+.targets-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.daytype-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.daytype-row-compact { margin-bottom: 0; }
+.daytype-btn {
+  min-height: var(--tap);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.daytype-btn.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.micro-chip .micro-goal {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-soft);
+  margin-top: 2px;
+}
+.micro-chip[data-tone="ok"] strong { color: var(--ok); }
+.micro-chip[data-tone="warn"] strong { color: var(--warn); }
+.micro-chip[data-tone="over"] strong { color: var(--danger); }
+.micro-chip[data-tone="low"] strong { color: var(--warn); }
+.phaseb-row { margin-top: 8px; }

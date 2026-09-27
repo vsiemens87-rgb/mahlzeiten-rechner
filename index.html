@@ -15,8 +15,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.0.1" />
-  <script src="app.js?v=2.0.1" defer></script>
+  <link rel="stylesheet" href="styles.css?v=2.1.0" />
+  <script src="app.js?v=2.1.0" defer></script>
 </head>
 <body>
   <div class="app">
@@ -33,6 +33,22 @@
         <div id="statusNote" class="status-note" data-tone="neutral">
           <span class="status-dot" aria-hidden="true"></span>
           <p id="statusText">Ziele setzen und erste Mahlzeit erfassen.</p>
+        </div>
+
+        <div id="targetsBanner" class="targets-banner" hidden role="status">
+          <div class="targets-banner-body">
+            <strong>Ziele aktualisiert</strong>
+            <p id="targetsBannerMeta" class="targets-banner-meta"></p>
+          </div>
+          <div class="targets-banner-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btnTargetsApply">Übernehmen</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnTargetsLater">Später</button>
+          </div>
+        </div>
+
+        <div class="daytype-row" aria-label="Training oder Ruhetag">
+          <button type="button" class="daytype-btn is-active" data-daytype="training" id="btnDayTraining">Training</button>
+          <button type="button" class="daytype-btn" data-daytype="rest" id="btnDayRest">Ruhe</button>
         </div>
 
         <div class="macro-grid" id="macroGrid" aria-label="Tages-Summe vs. Ziele">
@@ -66,15 +82,32 @@
           </div>
         </div>
 
-        <section class="card micro-card" aria-label="Phase-A Mikros">
+        <section class="card micro-card" aria-label="Mikros und Soft-Ziele">
           <h2>Weitere Nährstoffe (heute)</h2>
           <div class="micro-row" id="dayMicros">
-            <div class="micro-chip"><span>Zucker</span><strong id="sumSugar">0 g</strong></div>
-            <div class="micro-chip"><span>Gesättigt</span><strong id="sumSatFat">0 g</strong></div>
-            <div class="micro-chip"><span>Ballastst.</span><strong id="sumFiber">0 g</strong></div>
-            <div class="micro-chip"><span>Salz</span><strong id="sumSalt">0 g</strong></div>
+            <div class="micro-chip" data-micro="sugar" data-tone="neutral">
+              <span>Zucker</span>
+              <strong id="sumSugar">0 g</strong>
+              <em class="micro-goal" id="goalSugarLabel">Kein Soft-Ziel</em>
+            </div>
+            <div class="micro-chip" data-micro="satFat" data-tone="neutral">
+              <span>Gesättigt</span>
+              <strong id="sumSatFat">0 g</strong>
+              <em class="micro-goal">Nur Tracking</em>
+            </div>
+            <div class="micro-chip" data-micro="fiber" data-tone="neutral">
+              <span>Ballastst.</span>
+              <strong id="sumFiber">0 g</strong>
+              <em class="micro-goal" id="goalFiberLabel">Kein Soft-Ziel</em>
+            </div>
+            <div class="micro-chip" data-micro="salt" data-tone="neutral">
+              <span>Salz</span>
+              <strong id="sumSalt">0 g</strong>
+              <em class="micro-goal" id="goalSaltLabel">Kein Soft-Ziel</em>
+            </div>
           </div>
-          <p class="calm-note" style="margin-top:10px">Keine Tagesziele für Mikros – nur Tracking. Phase-B-Vitamine/Mineralien erscheinen in Einträgen, falls vorhanden.</p>
+          <div class="micro-row phaseb-row" id="dayPhaseB" hidden></div>
+          <p class="calm-note" style="margin-top:10px" id="microGoalsNote">Soft-Ziele erscheinen nach Übernehmen von <code>targets.json</code>. Phase B nur bei vorhandenen Werten – nichts erfinden.</p>
         </section>
 
         <section class="card" style="margin-top:14px" aria-label="Heutige Einträge">
@@ -160,7 +193,12 @@
       <section id="panel-ziele" class="panel" aria-label="Ziele">
         <form class="card" id="goalsForm">
           <h2>Zielmakros (pro Tag)</h2>
-          <p class="calm-note" style="margin-bottom:14px">Manuell setzen – PT kann später Werte liefern. Salz/Mikros: nur Tracking, keine Ziele.</p>
+          <p class="calm-note" style="margin-bottom:14px">Manuell setzen überschreibt bis zum nächsten <strong>Übernehmen</strong> aus <code>targets.json</code>. Soft-Mikros kommen vom PT-Sync.</p>
+          <div class="daytype-row daytype-row-compact" style="margin-bottom:14px" aria-label="Training oder Ruhetag (Ziele)">
+            <button type="button" class="daytype-btn" data-daytype="training" id="btnDayTrainingZiele">Training</button>
+            <button type="button" class="daytype-btn" data-daytype="rest" id="btnDayRestZiele">Ruhe</button>
+          </div>
+          <p class="calm-note" id="acceptedTargetsMeta" style="margin-bottom:12px" hidden></p>
           <div class="form-row">
             <div class="field">
               <label for="goalKcal">Energie (kcal)</label>
@@ -191,7 +229,7 @@
             Salz aus OFF: <code>salt_100g</code>, sonst Natrium × 2.5. Mikros Phase B nur anzeigen, nie erfinden.
           </p>
         </div>
-        <footer class="app-footer">v2.0.1 · Nur lokal · OFF + Tesseract CDN</footer>
+        <footer class="app-footer">v2.1.0 · Ziele-Sync · OFF + Tesseract CDN</footer>
       </section>
     </main>
 

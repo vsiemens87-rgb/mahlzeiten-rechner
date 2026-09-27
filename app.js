@@ -1,13 +1,15 @@
-/* Mahlzeiten-Rechner v2 — salt, OCR harden, products/recipes, micros Phase A/B */
+/* Mahlzeiten-Rechner v2.1 — Ziel-Sync (targets.json), salt, OCR, products/recipes, micros */
 (() => {
   "use strict";
 
   const STORAGE_KEY = "mahlzeiten_rechner_v2";
   const STORAGE_KEY_V1 = "mahlzeiten_rechner_v1";
   const HISTORY_DAYS = 7;
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
+  const APP_VERSION = "2.1.0";
 
   const DEFAULT_GOALS = { kcal: 2200, protein: 160, carbs: 200, fat: 70 };
+  const DEFAULT_DAY_TYPE = "training";
 
   const PHASE_A = ["sugar", "satFat", "fiber", "salt"];
   const PHASE_B = [
@@ -25,8 +27,19 @@
     ziele: "Ziele",
   };
 
-  /** @type {{ version: number, goals: typeof DEFAULT_GOALS, entries: Entry[], products: Product[], recipes: Recipe[] }} */
+  /** @type {{
+   *   version: number,
+   *   goals: typeof DEFAULT_GOALS,
+   *   dayType: "training"|"rest",
+   *   acceptedUpdatedAt: string|null,
+   *   acceptedTargets: object|null,
+   *   microGoals: object|null,
+   *   entries: Entry[], products: Product[], recipes: Recipe[]
+   * }} */
   let state = loadState();
+
+  /** Pending remote targets awaiting Übernehmen (not yet accepted). */
+  let pendingRemoteTargets = null;
 
   /**
    * @typedef {{
@@ -204,6 +217,59 @@
     };
   }
 
+  function emptyState() {
+    return {
+      version: SCHEMA_VERSION,
+      goals: { ...DEFAULT_GOALS },
+      dayType: DEFAULT_DAY_TYPE,
+      acceptedUpdatedAt: null,
+      acceptedTargets: null,
+      microGoals: null,
+      entries: [],
+      products: [],
+      recipes: [],
+    };
+  }
+
+  function normalizeMicroGoals(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const keys = [
+      "salt_g_max", "sugar_g_hard", "sugar_g_soft_max", "fiber_g_min",
+      "vitamin_c_mg", "calcium_mg", "iron_mg", "magnesium_mg", "potassium_mg",
+      "vitamin_d_ug", "zinc_mg",
+    ];
+    const out = {};
+    let any = false;
+    for (const k of keys) {
+      if (raw[k] != null && Number.isFinite(Number(raw[k]))) {
+        out[k] = Number(raw[k]);
+        any = true;
+      }
+    }
+    return any ? out : null;
+  }
+
+  function cloneTargetsPayload(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    try {
+      return JSON.parse(JSON.stringify(raw));
+    } catch {
+      return null;
+    }
+  }
+
+  function macrosFromTargets(targets, dayType) {
+    if (!targets || !targets.macros) return null;
+    const block = targets.macros[dayType] || targets.macros.training || targets.macros.rest;
+    if (!block) return null;
+    return {
+      kcal: num(block.kcal, DEFAULT_GOALS.kcal),
+      protein: num(block.protein_g ?? block.protein, DEFAULT_GOALS.protein),
+      carbs: num(block.carbs_g ?? block.carbs, DEFAULT_GOALS.carbs),
+      fat: num(block.fat_g ?? block.fat, DEFAULT_GOALS.fat),
+    };
+  }
+
   function loadState() {
     try {
       let raw = localStorage.getItem(STORAGE_KEY);
@@ -215,14 +281,17 @@
           fromV1 = true;
         }
       }
-      if (!raw) {
-        return { version: SCHEMA_VERSION, goals: { ...DEFAULT_GOALS }, entries: [], products: [], recipes: [] };
-      }
+      if (!raw) return emptyState();
       const parsed = JSON.parse(raw);
       const entries = (Array.isArray(parsed.entries) ? parsed.entries : []).map(migrateEntry);
+      const dayType = parsed.dayType === "rest" ? "rest" : "training";
       const stateObj = {
         version: SCHEMA_VERSION,
         goals: { ...DEFAULT_GOALS, ...(parsed.goals || {}) },
+        dayType,
+        acceptedUpdatedAt: typeof parsed.acceptedUpdatedAt === "string" ? parsed.acceptedUpdatedAt : null,
+        acceptedTargets: cloneTargetsPayload(parsed.acceptedTargets),
+        microGoals: normalizeMicroGoals(parsed.microGoals),
         entries,
         products: Array.isArray(parsed.products)
           ? parsed.products.map((p) => ({
@@ -239,29 +308,34 @@
         carbs: num(stateObj.goals.carbs, DEFAULT_GOALS.carbs),
         fat: num(stateObj.goals.fat, DEFAULT_GOALS.fat),
       };
-      if (fromV1) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateObj));
+      if (fromV1 || Number(parsed.version) < SCHEMA_VERSION) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(persistPayload(stateObj)));
       }
       return stateObj;
     } catch {
-      return { version: SCHEMA_VERSION, goals: { ...DEFAULT_GOALS }, entries: [], products: [], recipes: [] };
+      return emptyState();
     }
+  }
+
+  function persistPayload(s) {
+    return {
+      version: SCHEMA_VERSION,
+      goals: s.goals,
+      dayType: s.dayType === "rest" ? "rest" : "training",
+      acceptedUpdatedAt: s.acceptedUpdatedAt || null,
+      acceptedTargets: s.acceptedTargets || null,
+      microGoals: s.microGoals || null,
+      entries: s.entries,
+      products: s.products,
+      recipes: s.recipes,
+    };
   }
 
   function saveState() {
     const cutoff = dayOffset(-HISTORY_DAYS + 1);
     state.entries = state.entries.filter((e) => e.date >= cutoff);
     state.version = SCHEMA_VERSION;
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        version: state.version,
-        goals: state.goals,
-        entries: state.entries,
-        products: state.products,
-        recipes: state.recipes,
-      })
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistPayload(state)));
   }
 
   function todayStr(d = new Date()) {
@@ -393,13 +467,53 @@
   });
   $("#btnNavAdd").addEventListener("click", () => showPanel("add"));
 
-  // —— Goals ——
+  // —— Goals + dayType ——
   function fillGoalsForm() {
     $("#goalKcal").value = state.goals.kcal;
     $("#goalProtein").value = state.goals.protein;
     $("#goalCarbs").value = state.goals.carbs;
     $("#goalFat").value = state.goals.fat;
+    syncDayTypeButtons();
+    const meta = $("#acceptedTargetsMeta");
+    if (state.acceptedTargets && state.acceptedUpdatedAt) {
+      meta.hidden = false;
+      const wl = state.acceptedTargets.weekLabel ? ` · ${state.acceptedTargets.weekLabel}` : "";
+      const src = state.acceptedTargets.source ? ` · ${state.acceptedTargets.source}` : "";
+      meta.textContent = `Zuletzt übernommen: ${state.acceptedUpdatedAt}${wl}${src}`;
+    } else {
+      meta.hidden = true;
+      meta.textContent = "";
+    }
   }
+
+  function syncDayTypeButtons() {
+    const dt = state.dayType === "rest" ? "rest" : "training";
+    $$(".daytype-btn").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.daytype === dt);
+    });
+  }
+
+  function setDayType(next) {
+    const dt = next === "rest" ? "rest" : "training";
+    if (state.dayType === dt) {
+      syncDayTypeButtons();
+      return;
+    }
+    state.dayType = dt;
+    const fromAccepted = macrosFromTargets(state.acceptedTargets, dt);
+    if (fromAccepted) {
+      state.goals = fromAccepted;
+    }
+    saveState();
+    syncDayTypeButtons();
+    fillGoalsForm();
+    renderHeute();
+    toast(dt === "rest" ? "Ruhetag – Makroziele angepasst" : "Training – Makroziele angepasst");
+  }
+
+  $$(".daytype-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setDayType(btn.dataset.daytype));
+  });
 
   $("#goalsForm").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -410,7 +524,7 @@
       fat: num($("#goalFat").value, DEFAULT_GOALS.fat),
     };
     saveState();
-    toast("Ziele gespeichert");
+    toast("Ziele gespeichert (manuell bis nächstes Übernehmen)");
     showPanel("heute");
   });
 
@@ -470,6 +584,8 @@
     $("#sumSatFat").textContent = `${fmt(sum.satFat, 1)} g`;
     $("#sumFiber").textContent = `${fmt(sum.fiber, 1)} g`;
     $("#sumSalt").textContent = `${fmt(sum.salt, 2)} g`;
+    renderMicroSoftGoals(sum);
+    syncDayTypeButtons();
 
     const note = $("#statusNote");
     const text = $("#statusText");
@@ -501,6 +617,123 @@
       empty.hidden = true;
       ul.innerHTML = list.map(entryHtml).join("");
       bindEntryActions(ul);
+    }
+  }
+
+  function toneForMax(sum, max, softMax) {
+    if (!max || max <= 0) return "neutral";
+    if (sum > max) return "over";
+    if (softMax && softMax > 0 && sum > softMax) return "warn";
+    if (sum >= max * 0.9) return "warn";
+    return "ok";
+  }
+
+  function toneForMin(sum, min) {
+    if (!min || min <= 0) return "neutral";
+    if (sum >= min) return "ok";
+    if (sum >= min * 0.7) return "low";
+    return "warn";
+  }
+
+  function setMicroChip(key, tone, goalText) {
+    const chip = $(`.micro-chip[data-micro="${key}"]`);
+    if (!chip) return;
+    chip.dataset.tone = tone || "neutral";
+    const label = chip.querySelector(".micro-goal");
+    if (label && goalText != null) label.textContent = goalText;
+  }
+
+  function renderMicroSoftGoals(sum) {
+    const mg = state.microGoals;
+    const note = $("#microGoalsNote");
+    if (!mg) {
+      setMicroChip("sugar", "neutral", "Kein Soft-Ziel");
+      setMicroChip("fiber", "neutral", "Kein Soft-Ziel");
+      setMicroChip("salt", "neutral", "Kein Soft-Ziel");
+      setMicroChip("satFat", "neutral", "Nur Tracking");
+      const pb = $("#dayPhaseB");
+      if (pb) {
+        pb.hidden = true;
+        pb.innerHTML = "";
+      }
+      if (note) {
+        note.textContent = "Soft-Ziele erscheinen nach Übernehmen von targets.json. Phase B nur bei vorhandenen Werten – nichts erfinden.";
+      }
+      return;
+    }
+
+    // Sugar: hard + soft max (hard often stricter e.g. 25; soft_max may be higher e.g. 40)
+    const sugarHard = mg.sugar_g_hard;
+    const sugarSoft = mg.sugar_g_soft_max;
+    let sugarTone = "neutral";
+    if (sugarHard || sugarSoft) {
+      const caps = [sugarHard, sugarSoft].filter((v) => v != null && v > 0);
+      const hi = Math.max(...caps);
+      const lo = Math.min(...caps);
+      if (sum.sugar > hi) sugarTone = "over";
+      else if (sum.sugar > lo) sugarTone = "warn";
+      else if (sum.sugar >= lo * 0.9) sugarTone = "warn";
+      else sugarTone = "ok";
+    }
+    setMicroChip(
+      "sugar",
+      sugarTone,
+      sugarHard && sugarSoft
+        ? `Hart ≤${fmt(sugarHard, 0)} · Soft ≤${fmt(sugarSoft, 0)} g`
+        : (sugarHard || sugarSoft)
+          ? `Max ≤${fmt(sugarHard || sugarSoft, 0)} g`
+          : "Kein Soft-Ziel"
+    );
+
+    // Fiber min
+    setMicroChip(
+      "fiber",
+      toneForMin(sum.fiber, mg.fiber_g_min),
+      mg.fiber_g_min ? `Min ≥${fmt(mg.fiber_g_min, 0)} g` : "Kein Soft-Ziel"
+    );
+
+    // Salt max
+    setMicroChip(
+      "salt",
+      toneForMax(sum.salt, mg.salt_g_max),
+      mg.salt_g_max ? `Max ≤${fmt(mg.salt_g_max, 0)} g` : "Kein Soft-Ziel"
+    );
+
+    setMicroChip("satFat", "neutral", "Nur Tracking");
+
+    // Phase B: only when day sum has a tracked value
+    const phaseBMap = [
+      { key: "vitaminC", goalKey: "vitamin_c_mg", label: "Vit. C", unit: "mg", digits: 1 },
+      { key: "calcium", goalKey: "calcium_mg", label: "Calcium", unit: "mg", digits: 0 },
+      { key: "iron", goalKey: "iron_mg", label: "Eisen", unit: "mg", digits: 1 },
+      { key: "magnesium", goalKey: "magnesium_mg", label: "Magnesium", unit: "mg", digits: 0 },
+      { key: "potassium", goalKey: "potassium_mg", label: "Kalium", unit: "mg", digits: 0 },
+    ];
+    const pb = $("#dayPhaseB");
+    const chips = [];
+    for (const item of phaseBMap) {
+      const val = sum[item.key];
+      if (val == null) continue; // never invent
+      const goal = mg[item.goalKey];
+      const tone = goal ? toneForMin(val, goal) : "neutral";
+      const goalTxt = goal ? `Ziel ≥${fmt(goal, item.digits)} ${item.unit}` : "Kein Soft-Ziel";
+      chips.push(`<div class="micro-chip" data-tone="${tone}">
+        <span>${item.label}</span>
+        <strong>${fmt(val, item.digits)} ${item.unit}</strong>
+        <em class="micro-goal">${goalTxt}</em>
+      </div>`);
+    }
+    if (pb) {
+      if (chips.length) {
+        pb.hidden = false;
+        pb.innerHTML = chips.join("");
+      } else {
+        pb.hidden = true;
+        pb.innerHTML = "";
+      }
+    }
+    if (note) {
+      note.textContent = "Soft-Ziele aus targets.json. Phase B nur wenn getrackt – keine erfundenen Werte.";
     }
   }
 
@@ -1677,11 +1910,97 @@
     if (!recipesSheet.open) recipesSheet.showModal();
   });
 
+  // —— Ziel-Sync (targets.json) ——
+  function parseUpdatedAt(iso) {
+    if (!iso || typeof iso !== "string") return NaN;
+    const t = Date.parse(iso);
+    return Number.isFinite(t) ? t : NaN;
+  }
+
+  function isRemoteNewer(remoteIso, acceptedIso) {
+    const r = parseUpdatedAt(remoteIso);
+    if (!Number.isFinite(r)) return false;
+    if (!acceptedIso) return true;
+    const a = parseUpdatedAt(acceptedIso);
+    if (!Number.isFinite(a)) return true;
+    return r > a;
+  }
+
+  function hideTargetsBanner() {
+    const el = $("#targetsBanner");
+    if (el) el.hidden = true;
+    pendingRemoteTargets = null;
+  }
+
+  function showTargetsBanner(remote) {
+    pendingRemoteTargets = remote;
+    const el = $("#targetsBanner");
+    if (!el) return;
+    el.hidden = false;
+    const meta = $("#targetsBannerMeta");
+    const bits = [];
+    if (remote.weekLabel) bits.push(remote.weekLabel);
+    if (remote.source) bits.push(remote.source);
+    if (remote.dayType) bits.push(remote.dayType === "rest" ? "Ruhe" : "Training");
+    if (remote.updatedAt) bits.push(remote.updatedAt);
+    if (remote.notes) bits.push(remote.notes);
+    meta.textContent = bits.join(" · ");
+  }
+
+  function applyRemoteTargets(remote) {
+    if (!remote) return;
+    const copy = cloneTargetsPayload(remote);
+    state.acceptedTargets = copy;
+    state.acceptedUpdatedAt = typeof remote.updatedAt === "string" ? remote.updatedAt : new Date().toISOString();
+    if (remote.dayType === "rest" || remote.dayType === "training") {
+      state.dayType = remote.dayType;
+    }
+    const macros = macrosFromTargets(copy, state.dayType);
+    if (macros) state.goals = macros;
+    state.microGoals = normalizeMicroGoals(remote.micros);
+    saveState();
+    hideTargetsBanner();
+    fillGoalsForm();
+    renderHeute();
+    toast("Ziele übernommen");
+  }
+
+  async function checkRemoteTargets() {
+    try {
+      const res = await fetch("targets.json?ts=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const remote = await res.json();
+      if (!remote || typeof remote !== "object" || !remote.updatedAt) return;
+      if (isRemoteNewer(remote.updatedAt, state.acceptedUpdatedAt)) {
+        showTargetsBanner(remote);
+      }
+    } catch (err) {
+      console.warn("targets.json fetch failed", err);
+      // quiet soft toast once — keep manual goals
+      toast("Ziele-Sync offline – manuelle Ziele bleiben");
+    }
+  }
+
+  const btnApply = $("#btnTargetsApply");
+  const btnLater = $("#btnTargetsLater");
+  if (btnApply) {
+    btnApply.addEventListener("click", () => {
+      if (pendingRemoteTargets) applyRemoteTargets(pendingRemoteTargets);
+    });
+  }
+  if (btnLater) {
+    btnLater.addEventListener("click", () => {
+      hideTargetsBanner();
+      toast("Später – manuelle Ziele bleiben");
+    });
+  }
+
   // —— Init —— BOOT_GUARD
   try {
     fillGoalsForm();
     renderHeute();
     showPanel("heute");
+    checkRemoteTargets();
   } catch (err) {
     console.error(err);
     const banner = document.createElement("div");
