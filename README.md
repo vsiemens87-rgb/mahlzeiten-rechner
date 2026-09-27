@@ -30,7 +30,7 @@ Soft-Mikros (Salz-Max, Zucker hart/soft, Ballast-Min, Phase‑B-Caps) kommen nur
 Über **+** / **Hinzufügen**:
 
 1. **Barcode scannen** – empfohlen. Open Food Facts (Nährwerte pro 100 g inkl. Salz/Mikros).
-2. **Produkt suchen** – Textsuche in Open Food Facts (ohne Barcode). DE-Namen bevorzugt; Treffer wählen → gleiches Korrektur-Sheet wie beim Scan.
+2. **Produkt suchen** – Textsuche in Open Food Facts (ohne Barcode) plus lokale **Grundprodukte** (Gemüse/Obst/Fleisch/Gewürze). DE-Namen + Synonyme; Grundprodukte zuerst mit Badge; Treffer → gleiches Korrektur-Sheet.
 3. **Nährwerttabelle fotografieren** – Tabelle zuschneiden, dann OCR (Tesseract.js). Gutes Licht, scharfer Fokus.
 4. **Manuell** – Name und Werte selbst eingeben.
 5. **Gespeichertes Produkt** – aus lokaler Bibliothek wählen.
@@ -67,11 +67,11 @@ Nach Scan/OCR/Rezept erscheint immer ein **Vorschau-Sheet** mit allen Feldern (i
 
 - OCR bleibt fehleranfällig trotz Zuschnitt/Kontrast.
 - Kamera braucht HTTPS + Berechtigung.
-- OFF deckt nicht jedes Produkt ab; Textsuche kann unvollständige oder falsch benannte Treffer liefern.
-- OFF-Suche: Rate-Limits der OFF-API; laufende Anfrage wird bei neuer Eingabe abgebrochen.
+- OFF deckt Frischware oft schlecht ab; deshalb lokale **Grundprodukt**-Seed-Werte (Näherung USDA/BLS-artig, im Sheet korrigierbar).
+- OFF-Textsuche: Rate-Limits, Host-Fallback (`world`/`de`), Synonyme, Treffer mit Nährwerten bevorzugt; AbortController + Debounce.
 - Browser-Daten löschen = alles weg.
 - Sync nur wenn `targets.json` erreichbar; Vitamin D / Zink-Caps werden gespeichert, aber nur angezeigt wenn später getrackt.
 
 ## Technik
 
-Statisch für GitHub Pages. CDN (lazy): html5-qrcode, Tesseract.js – weiterhin nur on-demand, kein blockierendes Defer vor `app.js`. OFF Produkt: `world.openfoodfacts.org/api/v2/product/{code}.json`; Textsuche: `cgi/search.pl?json=1` (cc/lc=de). Version **v2.2.0**.
+Statisch für GitHub Pages. CDN (lazy): html5-qrcode, Tesseract.js – weiterhin nur on-demand, kein blockierendes Defer vor `app.js`. Lokale Seed: `grundprodukte.js`. OFF Produkt: `world.openfoodfacts.org/api/v2/product/{code}.json`; Textsuche: `cgi/search.pl?json=1` (cc/lc=de, Host-Fallback de.openfoodfacts.org). Version **v2.2.1**.

@@ -15,8 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.2.0" />
-  <script src="app.js?v=2.2.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=2.2.1" />
+  <script src="grundprodukte.js?v=2.2.1" defer></script>
+  <script src="app.js?v=2.2.1" defer></script>
 </head>
 <body>
   <div class="app">
@@ -241,7 +242,7 @@
             Salz aus OFF: <code>salt_100g</code>, sonst Natrium × 2.5. Mikros Phase B nur anzeigen, nie erfinden.
           </p>
         </div>
-        <footer class="app-footer">v2.2.0 · Ziele-Sync · OFF-Suche + Tesseract CDN</footer>
+        <footer class="app-footer">v2.2.1 · Ziele-Sync · OFF-Suche + Grundprodukte</footer>
       </section>
     </main>
 
@@ -286,11 +287,12 @@
     </div>
     <div class="field">
       <label for="offSearchInput">Produktname</label>
-      <input type="search" id="offSearchInput" maxlength="80" placeholder="z. B. Skyr Natur" autocomplete="off" enterkeyhint="search" />
+      <input type="search" id="offSearchInput" maxlength="80" placeholder="z. B. Paprika, Skyr Natur" autocomplete="off" enterkeyhint="search" />
     </div>
     <p class="scan-hint" id="searchStatus" role="status">Mindestens 2 Zeichen eingeben.</p>
     <div id="searchEmpty" class="empty-state" hidden>
       <p>Keine Treffer. Anderen Begriff versuchen oder Barcode scannen.</p>
+      <p class="calm-note" style="margin-top:8px">Tipp: Grundprodukte lokal, z. B. Paprika, Spitzpaprika, Kohlrabi.</p>
     </div>
     <div id="searchError" class="empty-state" hidden>
       <p id="searchErrorText">Suche fehlgeschlagen.</p>

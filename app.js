@@ -1,4 +1,4 @@
-/* Mahlzeiten-Rechner v2.2 — Ziel-Sync, OFF text search, salt, OCR, products/recipes, micros */
+/* Mahlzeiten-Rechner v2.2.1 — OFF search + Grundprodukt seed, Ziel-Sync, salt, OCR, products/recipes, micros */
 (() => {
   "use strict";
 
@@ -6,7 +6,7 @@
   const STORAGE_KEY_V1 = "mahlzeiten_rechner_v1";
   const HISTORY_DAYS = 7;
   const SCHEMA_VERSION = 3;
-  const APP_VERSION = "2.2.0";
+  const APP_VERSION = "2.2.1";
 
   const DEFAULT_GOALS = { kcal: 2200, protein: 160, carbs: 200, fat: 70 };
   const DEFAULT_DAY_TYPE = "training";
@@ -863,13 +863,15 @@
         ? `Barcode${pendingBarcode ? " · " + pendingBarcode : ""} · Open Food Facts`
         : pendingSource === "search"
           ? `Suche${pendingBarcode ? " · " + pendingBarcode : ""} · Open Food Facts`
-          : pendingSource === "ocr"
-            ? "OCR · bitte korrigieren"
-            : pendingSource === "product"
-              ? "Gespeichertes Produkt"
-              : pendingSource === "recipe"
-                ? "Rezept · 1 Portion"
-                : "Manuell";
+          : pendingSource === "grundprodukt"
+            ? "Grundprodukt · Näherungswert (editierbar)"
+            : pendingSource === "ocr"
+              ? "OCR · bitte korrigieren"
+              : pendingSource === "product"
+                ? "Gespeichertes Produkt"
+                : pendingSource === "recipe"
+                  ? "Rezept · 1 Portion"
+                  : "Manuell";
 
     const failNote = $("#ocrFailNote");
     if (data.ocrFailed) {
@@ -1191,10 +1193,56 @@
     );
   }
 
-  // —— OFF text product search ——
+  // —— OFF text product search + local Grundprodukt seed ——
   let offSearchAbort = null;
   let offSearchTimer = null;
   let offSearchSeq = 0;
+  /** @type {Array<{kind:string, data:any}>} */
+  let lastSearchHits = [];
+
+  const OFF_SEARCH_HOSTS = [
+    "https://world.openfoodfacts.org",
+    "https://de.openfoodfacts.org",
+  ];
+
+  /** Synonyms / EN tags for fresh-produce DE queries that OFF often mishandles. */
+  const OFF_QUERY_SYNONYMS = {
+    paprika: ["paprika", "bell pepper", "paprika schote"],
+    "rote paprika": ["rote paprika", "red bell pepper", "paprika"],
+    "gelbe paprika": ["gelbe paprika", "yellow bell pepper"],
+    "grüne paprika": ["grüne paprika", "green bell pepper", "gruene paprika"],
+    "gruene paprika": ["grüne paprika", "green bell pepper"],
+    spitzpaprika: ["spitzpaprika", "pointed pepper", "sweet pointed pepper", "kapia"],
+    kohlrabi: ["kohlrabi", "german turnip", "turnip cabbage"],
+    tomate: ["tomate", "tomato"],
+    gurke: ["gurke", "cucumber"],
+    zucchini: ["zucchini", "courgette"],
+    karotte: ["karotte", "möhre", "carrot"],
+    möhre: ["möhre", "karotte", "carrot"],
+    brokkoli: ["brokkoli", "broccoli"],
+    blumenkohl: ["blumenkohl", "cauliflower"],
+    spinat: ["spinat", "spinach"],
+    zwiebel: ["zwiebel", "onion"],
+    knoblauch: ["knoblauch", "garlic"],
+    kartoffel: ["kartoffel", "potato"],
+    süßkartoffel: ["süßkartoffel", "sweet potato"],
+    suesskartoffel: ["süßkartoffel", "sweet potato"],
+    champignon: ["champignon", "mushroom"],
+    aubergine: ["aubergine", "eggplant"],
+    spargel: ["spargel", "asparagus"],
+    avocado: ["avocado"],
+    apfel: ["apfel", "apple"],
+    banane: ["banane", "banana"],
+    erdbeere: ["erdbeere", "strawberry"],
+    hähnchenbrust: ["hähnchenbrust", "chicken breast"],
+    haehnchenbrust: ["hähnchenbrust", "chicken breast"],
+    putenbrust: ["putenbrust", "turkey breast"],
+    lachs: ["lachs", "salmon"],
+  };
+
+  const GRUNDPRODUKTE = Array.isArray(window.MAHLZEITEN_GRUNDPRODUKTE)
+    ? window.MAHLZEITEN_GRUNDPRODUKTE
+    : [];
 
   $("#btnSearchProduct").addEventListener("click", () => {
     if (!searchSheet.showModal) {
@@ -1246,6 +1294,7 @@
     $("#searchResults").innerHTML = "";
     $("#searchEmpty").hidden = true;
     $("#searchError").hidden = true;
+    lastSearchHits = [];
     const st = $("#searchStatus");
     st.textContent = "Mindestens 2 Zeichen eingeben.";
     st.classList.remove("search-status-loading");
@@ -1270,6 +1319,66 @@
     st.classList.toggle("search-status-loading", !!loading);
   }
 
+  function normSearch(s) {
+    return String(s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function expandOffQueries(q) {
+    const nq = normSearch(q);
+    const out = [];
+    const add = (t) => {
+      const t2 = String(t || "").trim();
+      if (!t2) return;
+      if (!out.some((x) => normSearch(x) === normSearch(t2))) out.push(t2);
+    };
+    add(q);
+    const syn = OFF_QUERY_SYNONYMS[nq];
+    if (syn) syn.forEach(add);
+    // Partial key match (e.g. "spitzpaprika rot" → spitzpaprika)
+    Object.keys(OFF_QUERY_SYNONYMS).forEach((key) => {
+      if (nq.includes(key) || key.includes(nq)) {
+        OFF_QUERY_SYNONYMS[key].forEach(add);
+      }
+    });
+    return out.slice(0, 4);
+  }
+
+  function scoreGrundMatch(item, nq) {
+    if (!nq || nq.length < 2) return 0;
+    const names = [item.name, ...(item.aliases || [])].map(normSearch);
+    let best = 0;
+    for (const n of names) {
+      if (!n) continue;
+      if (n === nq) best = Math.max(best, 100);
+      else if (n.startsWith(nq)) best = Math.max(best, 90);
+      else if (nq.startsWith(n) && n.length >= 4) best = Math.max(best, 75);
+      else if (n.includes(nq)) best = Math.max(best, 65);
+      else if (nq.includes(n) && n.length >= 5) best = Math.max(best, 45);
+    }
+    return best;
+  }
+
+  function matchGrundprodukte(q) {
+    const nq = normSearch(q);
+    if (nq.length < 2) return [];
+    return GRUNDPRODUKTE
+      .map((item) => ({ item, score: scoreGrundMatch(item, nq) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name, "de"))
+      .slice(0, 12)
+      .map((x) => x.item);
+  }
+
   function offHitKcal(n) {
     if (!n) return null;
     if (n["energy-kcal_100g"] != null) return num(n["energy-kcal_100g"]);
@@ -1278,35 +1387,178 @@
     return null;
   }
 
-  function renderSearchHits(products) {
+  function offNutrimentScore(p) {
+    const n = p && p.nutriments ? p.nutriments : {};
+    let s = 0;
+    if (offHitKcal(n) != null) s += 3;
+    if (n.proteins_100g != null || n.proteins != null) s += 2;
+    if (n.carbohydrates_100g != null || n.carbohydrates != null) s += 2;
+    if (n.fat_100g != null || n.fat != null) s += 2;
+    if (n.salt_100g != null || n.sodium_100g != null) s += 1;
+    if (n.sugars_100g != null || n.fiber_100g != null || n["saturated-fat_100g"] != null) s += 1;
+    return s;
+  }
+
+  function hasUsefulNutriments(p) {
+    return offNutrimentScore(p) >= 5;
+  }
+
+  async function fetchOffSearchOnce(host, terms, signal) {
+    const params = new URLSearchParams({
+      search_terms: terms,
+      search_simple: "1",
+      action: "process",
+      json: "1",
+      page_size: "24",
+      page: "1",
+      cc: "de",
+      lc: "de",
+      fields:
+        "code,product_name,product_name_de,product_name_en,generic_name,brands,nutriments,categories_tags,countries_tags",
+    });
+    const url = `${host}/cgi/search.pl?${params.toString()}`;
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": `Mahlzeiten-Rechner/${APP_VERSION} (https://vsiemens87-rgb.github.io/mahlzeiten-rechner)`,
+      },
+      signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data.products) ? data.products : [];
+  }
+
+  async function fetchOffSearchMerged(queries, signal) {
+    const byCode = new Map();
+    let anyOk = false;
+    let lastErr = null;
+
+    for (const terms of queries) {
+      if (signal.aborted) break;
+      for (const host of OFF_SEARCH_HOSTS) {
+        if (signal.aborted) break;
+        try {
+          const products = await fetchOffSearchOnce(host, terms, signal);
+          anyOk = true;
+          for (const p of products) {
+            const code = String(p.code || "").trim();
+            const key = code || `noid:${(pickLocale(p, "product_name") || p.product_name || "").slice(0, 40)}`;
+            const prev = byCode.get(key);
+            if (!prev || offNutrimentScore(p) > offNutrimentScore(prev)) {
+              byCode.set(key, p);
+            }
+          }
+          // Enough strong hits for this query → skip other host
+          const strong = [...byCode.values()].filter(hasUsefulNutriments).length;
+          if (strong >= 8) break;
+        } catch (err) {
+          if (err && err.name === "AbortError") throw err;
+          lastErr = err;
+        }
+      }
+    }
+
+    const list = [...byCode.values()];
+    list.sort((a, b) => offNutrimentScore(b) - offNutrimentScore(a));
+    // Prefer nutriment-complete first, keep incomplete at end (user can fill)
+    const withNuts = list.filter(hasUsefulNutriments);
+    const without = list.filter((p) => !hasUsefulNutriments(p));
+    const merged = withNuts.concat(without).slice(0, 20);
+    return { products: merged, anyOk, lastErr };
+  }
+
+  function openGrundproduktPreview(item) {
+    const n = item.per100 || {};
+    openPreview({
+      source: "grundprodukt",
+      name: item.name,
+      kcal: n.kcal ?? 0,
+      protein: n.protein ?? 0,
+      carbs: n.carbs ?? 0,
+      fat: n.fat ?? 0,
+      sugar: n.sugar ?? 0,
+      satFat: n.satFat ?? 0,
+      fiber: n.fiber ?? 0,
+      salt: n.salt ?? 0,
+      grams: 100,
+    });
+  }
+
+  function renderSearchHits(grundItems, offProducts) {
     const ul = $("#searchResults");
     ul.innerHTML = "";
-    products.forEach((p, i) => {
-      const code = String(p.code || "").trim();
-      const name =
-        pickLocale(p, "product_name") ||
-        p.product_name ||
-        p.generic_name ||
-        (code ? `Produkt ${code}` : "Unbenannt");
-      const brand = (p.brands || "").split(",")[0].trim();
-      const kcal = offHitKcal(p.nutriments || {});
-      const kcalTxt = kcal != null ? `${fmt(kcal, 0)} kcal / 100 g` : "kcal unbekannt";
-      const meta = [brand || null, kcalTxt].filter(Boolean).join(" · ");
-      const li = document.createElement("li");
-      li.className = "lib-item";
-      li.innerHTML = `<button type="button" class="lib-main" data-search-idx="${i}">
+    lastSearchHits = [];
+
+    const appendSection = (title) => {
+      const h = document.createElement("li");
+      h.className = "search-section";
+      h.setAttribute("aria-hidden", "true");
+      h.textContent = title;
+      ul.appendChild(h);
+    };
+
+    if (grundItems.length) {
+      appendSection("Grundprodukte (lokal)");
+      grundItems.forEach((item) => {
+        const idx = lastSearchHits.length;
+        lastSearchHits.push({ kind: "grundprodukt", data: item });
+        const n = item.per100 || {};
+        const meta = `${fmt(n.kcal, 0)} kcal / 100 g · P ${fmt(n.protein, 1)} · KH ${fmt(n.carbs, 1)} · F ${fmt(n.fat, 1)}`;
+        const li = document.createElement("li");
+        li.className = "lib-item";
+        li.innerHTML = `<button type="button" class="lib-main" data-search-idx="${idx}">
+            <strong>${escapeHtml(item.name)} <span class="hit-badge">Grundprodukt</span></strong>
+            <span>${escapeHtml(meta)}</span>
+          </button>`;
+        ul.appendChild(li);
+      });
+    }
+
+    if (offProducts.length) {
+      appendSection("Open Food Facts");
+      offProducts.forEach((p) => {
+        const idx = lastSearchHits.length;
+        lastSearchHits.push({ kind: "off", data: p });
+        const code = String(p.code || "").trim();
+        const name =
+          pickLocale(p, "product_name") ||
+          p.product_name ||
+          p.generic_name ||
+          (code ? `Produkt ${code}` : "Unbenannt");
+        const brand = (p.brands || "").split(",")[0].trim();
+        const kcal = offHitKcal(p.nutriments || {});
+        const useful = hasUsefulNutriments(p);
+        const kcalTxt =
+          kcal != null ? `${fmt(kcal, 0)} kcal / 100 g` : "kcal unbekannt";
+        const meta = [brand || null, kcalTxt, useful ? null : "Werte ergänzen"]
+          .filter(Boolean)
+          .join(" · ");
+        const li = document.createElement("li");
+        li.className = "lib-item";
+        li.innerHTML = `<button type="button" class="lib-main" data-search-idx="${idx}">
             <strong>${escapeHtml(name)}</strong>
             <span>${escapeHtml(meta)}</span>
           </button>`;
-      ul.appendChild(li);
-    });
+        ul.appendChild(li);
+      });
+    }
+
     ul.querySelectorAll("[data-search-idx]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const idx = Number(btn.getAttribute("data-search-idx"));
-        const p = products[idx];
-        if (!p) return;
+        const hit = lastSearchHits[idx];
+        if (!hit) return;
         closeSearchSheet();
-        openOffProductPreview(p, String(p.code || "").trim() || undefined, "search");
+        if (hit.kind === "grundprodukt") {
+          openGrundproduktPreview(hit.data);
+        } else {
+          openOffProductPreview(
+            hit.data,
+            String(hit.data.code || "").trim() || undefined,
+            "search"
+          );
+        }
       });
     });
   }
@@ -1319,57 +1571,73 @@
     if (q.length < 2) {
       abortOffSearch();
       $("#searchResults").innerHTML = "";
+      lastSearchHits = [];
       setSearchStatus("Mindestens 2 Zeichen eingeben.", false);
       return;
     }
+
+    const localHits = matchGrundprodukte(q);
 
     abortOffSearch();
     const ctrl = new AbortController();
     offSearchAbort = ctrl;
     const seq = ++offSearchSeq;
-    setSearchStatus("Suche …", true);
-    $("#searchResults").innerHTML = "";
+    setSearchStatus(
+      localHits.length
+        ? `Suche OFF … · ${localHits.length} Grundprodukt${localHits.length === 1 ? "" : "e"} lokal`
+        : "Suche …",
+      true
+    );
+    // Show local immediately while OFF loads
+    renderSearchHits(localHits, []);
 
     try {
-      const params = new URLSearchParams({
-        search_terms: q,
-        search_simple: "1",
-        action: "process",
-        json: "1",
-        page_size: "20",
-        page: "1",
-        cc: "de",
-        lc: "de",
-      });
-      const url = `https://world.openfoodfacts.org/cgi/search.pl?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: { Accept: "application/json" },
-        signal: ctrl.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const queries = expandOffQueries(q);
+      const { products, anyOk, lastErr } = await fetchOffSearchMerged(queries, ctrl.signal);
       if (seq !== offSearchSeq) return;
 
-      const products = Array.isArray(data.products) ? data.products : [];
-      if (!products.length) {
+      if (!products.length && !localHits.length) {
         setSearchStatus(`Keine Treffer für „${q}“.`, false);
         $("#searchEmpty").hidden = false;
+        $("#searchResults").innerHTML = "";
+        lastSearchHits = [];
+        if (!anyOk && lastErr) {
+          $("#searchError").hidden = false;
+          $("#searchErrorText").textContent =
+            "Open-Food-Facts-Suche fehlgeschlagen. Grundprodukte lokal nutzen oder später erneut versuchen.";
+        }
         return;
       }
-      const count = data.count != null ? data.count : products.length;
-      setSearchStatus(
-        `${products.length} Treffer${count > products.length ? ` (von ${count})` : ""} · tippen zum Auswählen`,
-        false
-      );
-      renderSearchHits(products);
+
+      const useful = products.filter(hasUsefulNutriments).length;
+      const parts = [];
+      if (localHits.length) parts.push(`${localHits.length} Grundprodukt${localHits.length === 1 ? "" : "e"}`);
+      if (products.length) {
+        parts.push(
+          `${products.length} OFF${useful < products.length ? ` (${useful} mit Nährwerten)` : ""}`
+        );
+      }
+      setSearchStatus(`${parts.join(" · ")} · tippen zum Auswählen`, false);
+      renderSearchHits(localHits, products);
     } catch (err) {
       if (err && err.name === "AbortError") return;
       console.error(err);
       if (seq !== offSearchSeq) return;
-      setSearchStatus("Suche fehlgeschlagen.", false);
-      $("#searchError").hidden = false;
-      $("#searchErrorText").textContent =
-        "Open-Food-Facts-Suche fehlgeschlagen. Netzwerk prüfen oder später erneut versuchen.";
+      if (localHits.length) {
+        setSearchStatus(
+          `${localHits.length} Grundprodukt${localHits.length === 1 ? "" : "e"} · OFF fehlgeschlagen`,
+          false
+        );
+        renderSearchHits(localHits, []);
+        $("#searchError").hidden = false;
+        $("#searchErrorText").textContent =
+          "Open-Food-Facts-Suche fehlgeschlagen. Lokale Grundprodukte bleiben nutzbar.";
+      } else {
+        setSearchStatus("Suche fehlgeschlagen.", false);
+        $("#searchError").hidden = false;
+        $("#searchErrorText").textContent =
+          "Open-Food-Facts-Suche fehlgeschlagen. Tipp: Grundprodukte lokal, z. B. Paprika.";
+      }
     } finally {
       if (offSearchAbort === ctrl) offSearchAbort = null;
     }
