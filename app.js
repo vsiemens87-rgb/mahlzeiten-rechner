@@ -99,7 +99,11 @@
   const recipeEditSheet = $("#recipeEditSheet");
   const ocrFileInput = $("#ocrFileInput");
   const cropCanvas = $("#cropCanvas");
-  const cropCtx = cropCanvas.getContext("2d");
+  let cropCtx = null;
+  function getCropCtx() {
+    if (!cropCtx && cropCanvas) cropCtx = cropCanvas.getContext("2d");
+    return cropCtx;
+  }
 
   // —— Nutrients helpers ——
   function emptyNutrients() {
@@ -312,6 +316,49 @@
     toastEl.classList.add("show");
     clearTimeout(toast._t);
     toast._t = setTimeout(() => toastEl.classList.remove("show"), 2800);
+  }
+
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-lazy-src="${src}"]`);
+      if (existing) {
+        if (existing.dataset.loaded === "1") return resolve();
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Script failed: " + src)), { once: true });
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.dataset.lazySrc = src;
+      s.onload = () => {
+        s.dataset.loaded = "1";
+        resolve();
+      };
+      s.onerror = () => reject(new Error("Script failed: " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensureHtml5Qrcode() {
+    if (typeof Html5Qrcode !== "undefined") return;
+    toast("Lade Scanner …");
+    await loadScript("https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js");
+    if (typeof Html5Qrcode === "undefined") {
+      await loadScript("https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js");
+    }
+    if (typeof Html5Qrcode === "undefined") throw new Error("Scanner-Bibliothek nicht geladen");
+  }
+
+  async function ensureTesseract() {
+    if (typeof Tesseract !== "undefined") return;
+    toast("Lade OCR …");
+    await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
+    if (typeof Tesseract === "undefined") {
+      await loadScript("https://unpkg.com/tesseract.js@5/dist/tesseract.min.js");
+    }
+    if (typeof Tesseract === "undefined") throw new Error("OCR-Bibliothek nicht geladen");
   }
 
   function optionalInput(id) {
@@ -622,7 +669,7 @@
     $("#saveProductRow").hidden = pendingSource === "recipe" || pendingSource === "product";
 
     updateScaledPreview();
-    if (!previewSheet.open) previewSheet.showModal();
+    if (previewSheet.showModal && !previewSheet.open) previewSheet.showModal();
   }
 
   function updateScaledPreview() {
@@ -715,8 +762,15 @@
   $("#scanCancel").addEventListener("click", stopBarcodeScan);
 
   async function startBarcodeScan() {
-    if (typeof Html5Qrcode === "undefined") {
-      toast("Scanner-Bibliothek noch nicht geladen");
+    try {
+      await ensureHtml5Qrcode();
+    } catch (err) {
+      console.error(err);
+      toast("Scanner konnte nicht geladen werden (Netzwerk/CDN)");
+      return;
+    }
+    if (!scanSheet.showModal) {
+      toast("Dialog nicht unterstützt – Browser aktualisieren");
       return;
     }
     scanSheet.showModal();
@@ -939,26 +993,26 @@
     cropCanvas.height = h;
     cropCanvas.style.width = `${w}px`;
     cropCanvas.style.height = `${h}px`;
-    cropCtx.drawImage(cropImg, 0, 0, w, h);
+    getCropCtx().drawImage(cropImg, 0, 0, w, h);
     // dim outside
     const rx = cropRect.x * w;
     const ry = cropRect.y * h;
     const rw = cropRect.w * w;
     const rh = cropRect.h * h;
-    cropCtx.fillStyle = "rgba(0,0,0,0.55)";
-    cropCtx.fillRect(0, 0, w, h);
-    cropCtx.clearRect(rx, ry, rw, rh);
-    cropCtx.drawImage(cropImg, cropRect.x * cropImg.width, cropRect.y * cropImg.height,
+    getCropCtx().fillStyle = "rgba(0,0,0,0.55)";
+    getCropCtx().fillRect(0, 0, w, h);
+    getCropCtx().clearRect(rx, ry, rw, rh);
+    getCropCtx().drawImage(cropImg, cropRect.x * cropImg.width, cropRect.y * cropImg.height,
       cropRect.w * cropImg.width, cropRect.h * cropImg.height,
       rx, ry, rw, rh);
-    cropCtx.strokeStyle = "#ff7a59";
-    cropCtx.lineWidth = 2;
-    cropCtx.strokeRect(rx, ry, rw, rh);
+    getCropCtx().strokeStyle = "#ff7a59";
+    getCropCtx().lineWidth = 2;
+    getCropCtx().strokeRect(rx, ry, rw, rh);
     // handles
     const hs = 14;
-    cropCtx.fillStyle = "#ff7a59";
+    getCropCtx().fillStyle = "#ff7a59";
     [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]].forEach(([hx, hy]) => {
-      cropCtx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+      getCropCtx().fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
     });
   }
 
@@ -1044,8 +1098,11 @@
 
   $("#cropRun").addEventListener("click", async () => {
     if (!cropImg) return;
-    if (typeof Tesseract === "undefined") {
-      toast("Tesseract noch nicht geladen");
+    try {
+      await ensureTesseract();
+    } catch (err) {
+      console.error(err);
+      toast("OCR konnte nicht geladen werden (Netzwerk/CDN)");
       return;
     }
     cropSheet.close();
@@ -1620,8 +1677,17 @@
     if (!recipesSheet.open) recipesSheet.showModal();
   });
 
-  // —— Init ——
-  fillGoalsForm();
-  renderHeute();
-  showPanel("heute");
+  // —— Init —— BOOT_GUARD
+  try {
+    fillGoalsForm();
+    renderHeute();
+    showPanel("heute");
+  } catch (err) {
+    console.error(err);
+    const banner = document.createElement("div");
+    banner.setAttribute("role", "alert");
+    banner.style.cssText = "position:fixed;left:12px;right:12px;top:12px;z-index:9999;padding:12px 14px;border-radius:12px;background:#331a1a;color:#ff6b6b;font:14px/1.4 system-ui;";
+    banner.textContent = "App-Startfehler: " + (err && err.message ? err.message : String(err));
+    document.body.prepend(banner);
+  }
 })();
