@@ -68,6 +68,17 @@
           </div>
         </div>
 
+        <section class="card micro-card" aria-label="Phase-A Mikros">
+          <h2>Weitere Nährstoffe (heute)</h2>
+          <div class="micro-row" id="dayMicros">
+            <div class="micro-chip"><span>Zucker</span><strong id="sumSugar">0 g</strong></div>
+            <div class="micro-chip"><span>Gesättigt</span><strong id="sumSatFat">0 g</strong></div>
+            <div class="micro-chip"><span>Ballastst.</span><strong id="sumFiber">0 g</strong></div>
+            <div class="micro-chip"><span>Salz</span><strong id="sumSalt">0 g</strong></div>
+          </div>
+          <p class="calm-note" style="margin-top:10px">Keine Tagesziele für Mikros – nur Tracking. Phase-B-Vitamine/Mineralien erscheinen in Einträgen, falls vorhanden.</p>
+        </section>
+
         <section class="card" style="margin-top:14px" aria-label="Heutige Einträge">
           <h2>Heute gegessen</h2>
           <div id="todayEmpty" class="empty-state" hidden>
@@ -79,7 +90,7 @@
 
       <!-- HINZUFÜGEN -->
       <section id="panel-add" class="panel" aria-label="Hinzufügen">
-        <p class="calm-note" style="margin-bottom:14px">Barcode, Foto der Nährwerttabelle oder manuell – vor dem Speichern immer korrigierbar.</p>
+        <p class="calm-note" style="margin-bottom:14px">Barcode (empfohlen), Foto der Nährwerttabelle oder manuell – vor dem Speichern immer korrigierbar.</p>
         <div class="add-stack">
           <button type="button" class="action-card" id="btnScanBarcode">
             <span class="action-ico" aria-hidden="true">
@@ -87,7 +98,7 @@
             </span>
             <span class="action-body">
               <strong>Barcode scannen</strong>
-              <span>Open Food Facts · Nährwerte pro 100 g</span>
+              <span>Open Food Facts · primärer Weg</span>
             </span>
             <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
           </button>
@@ -98,7 +109,7 @@
             </span>
             <span class="action-body">
               <strong>Nährwerttabelle fotografieren</strong>
-              <span>OCR mit Tesseract.js · lokal im Browser</span>
+              <span>OCR · zuschneiden &amp; Kontrast</span>
             </span>
             <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
           </button>
@@ -109,7 +120,29 @@
             </span>
             <span class="action-body">
               <strong>Manuell eingeben</strong>
-              <span>Name + Werte pro 100 g selbst setzen</span>
+              <span>Name + Werte pro 100 g</span>
+            </span>
+            <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+
+          <button type="button" class="action-card" id="btnPickProduct">
+            <span class="action-ico" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16v12H4z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
+            </span>
+            <span class="action-body">
+              <strong>Gespeichertes Produkt</strong>
+              <span>Aus lokaler Bibliothek wählen</span>
+            </span>
+            <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+
+          <button type="button" class="action-card" id="btnRecipes">
+            <span class="action-ico" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+            </span>
+            <span class="action-body">
+              <strong>Rezepte</strong>
+              <span>Zusammenstellen &amp; „Rezept essen“</span>
             </span>
             <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
           </button>
@@ -129,7 +162,7 @@
       <section id="panel-ziele" class="panel" aria-label="Ziele">
         <form class="card" id="goalsForm">
           <h2>Zielmakros (pro Tag)</h2>
-          <p class="calm-note" style="margin-bottom:14px">Manuell setzen – PT kann später Werte liefern.</p>
+          <p class="calm-note" style="margin-bottom:14px">Manuell setzen – PT kann später Werte liefern. Salz/Mikros: nur Tracking, keine Ziele.</p>
           <div class="form-row">
             <div class="field">
               <label for="goalKcal">Energie (kcal)</label>
@@ -156,10 +189,11 @@
           <h2>Hinweise</h2>
           <p class="calm-note">
             Daten liegen nur lokal in diesem Browser. Kamera braucht HTTPS und Freigabe.
-            OCR kann Fehler machen – Vorschau immer prüfen. Open Food Facts deckt nicht jedes Produkt ab.
+            OCR: Tabelle zuschneiden, gutes Licht. Barcode bleibt der zuverlässigste Weg.
+            Salz aus OFF: <code>salt_100g</code>, sonst Natrium × 2.5. Mikros Phase B nur anzeigen, nie erfinden.
           </p>
         </div>
-        <footer class="app-footer">v1.0 · Nur lokal · OFF + Tesseract CDN</footer>
+        <footer class="app-footer">v2.0 · Nur lokal · OFF + Tesseract CDN</footer>
       </section>
     </main>
 
@@ -195,6 +229,22 @@
     </div>
   </dialog>
 
+  <!-- OCR Crop Sheet -->
+  <dialog id="cropSheet" class="sheet" aria-labelledby="cropTitle">
+    <span class="grabber" aria-hidden="true"></span>
+    <div class="sheet-head">
+      <h2 id="cropTitle">Tabelle zuschneiden</h2>
+    </div>
+    <p class="scan-hint">Rahmen auf die Nährwerttabelle ziehen. Gutes Licht hilft. Barcode ist zuverlässiger.</p>
+    <div class="crop-wrap">
+      <canvas id="cropCanvas"></canvas>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="cropCancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="cropRun">OCR starten</button>
+    </div>
+  </dialog>
+
   <!-- Korrektur / Preview Sheet -->
   <dialog id="previewSheet" class="sheet" aria-labelledby="previewTitle">
     <form id="previewForm">
@@ -203,6 +253,7 @@
         <h2 id="previewTitle">Prüfen &amp; speichern</h2>
       </div>
       <span class="source-badge" id="sourceBadge">Quelle</span>
+      <p class="ocr-fail-note" id="ocrFailNote" hidden>Nichts erkannt — bitte manuell eingeben</p>
 
       <div class="field">
         <label for="prodName">Produktname</label>
@@ -231,6 +282,60 @@
         </div>
       </div>
 
+      <details class="micro-details" open>
+        <summary>Phase A · Zucker, gesättigt, Ballaststoffe, Salz</summary>
+        <div class="form-row">
+          <div class="field">
+            <label for="nutSugar">Zucker g</label>
+            <input type="number" id="nutSugar" min="0" max="200" step="0.1" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label for="nutSatFat">Gesättigte Fettsäuren g</label>
+            <input type="number" id="nutSatFat" min="0" max="200" step="0.1" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="nutFiber">Ballaststoffe g</label>
+            <input type="number" id="nutFiber" min="0" max="100" step="0.1" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label for="nutSalt">Salz g</label>
+            <input type="number" id="nutSalt" min="0" max="50" step="0.01" inputmode="decimal" />
+            <span class="field-hint" id="saltHint" hidden>Aus Natrium × 2.5 umgerechnet</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="micro-details" id="phaseBDetails">
+        <summary>Phase B · Vitamine / Mineralien (optional)</summary>
+        <p class="calm-note" style="margin-bottom:10px">Nur anzeigen/eintragen wenn bekannt – leere Felder bleiben „—“.</p>
+        <div class="form-row">
+          <div class="field">
+            <label for="nutVitC">Vitamin C mg</label>
+            <input type="number" id="nutVitC" min="0" max="2000" step="0.1" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label for="nutCalcium">Calcium mg</label>
+            <input type="number" id="nutCalcium" min="0" max="5000" step="1" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="nutIron">Eisen mg</label>
+            <input type="number" id="nutIron" min="0" max="100" step="0.1" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label for="nutMagnesium">Magnesium mg</label>
+            <input type="number" id="nutMagnesium" min="0" max="2000" step="1" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="nutPotassium">Kalium mg</label>
+          <input type="number" id="nutPotassium" min="0" max="10000" step="1" inputmode="decimal" />
+        </div>
+      </details>
+
       <div class="field">
         <label for="gramsEaten">Gegessene Menge (g)</label>
         <input type="number" id="gramsEaten" min="1" max="5000" step="1" inputmode="numeric" value="100" required />
@@ -239,6 +344,11 @@
       <div class="preview-scaled" id="scaledPreview" aria-live="polite">
         Für diese Menge: <strong id="scaledText">—</strong>
       </div>
+
+      <label class="check-row" id="saveProductRow">
+        <input type="checkbox" id="saveAsProduct" />
+        <span>Als Produkt speichern (Wiederverwendung)</span>
+      </label>
 
       <div class="sheet-actions">
         <button type="button" class="btn btn-ghost" id="previewCancel">Abbrechen</button>
@@ -259,6 +369,83 @@
     <div class="sheet-actions">
       <button type="button" class="btn btn-ghost" id="ocrCancel">Abbrechen</button>
     </div>
+  </dialog>
+
+  <!-- Products library sheet -->
+  <dialog id="productsSheet" class="sheet" aria-labelledby="productsTitle">
+    <span class="grabber" aria-hidden="true"></span>
+    <div class="sheet-head">
+      <h2 id="productsTitle">Produkte</h2>
+    </div>
+    <p class="calm-note" style="margin-bottom:12px">Lokal gespeichert. Tippen zum Loggen.</p>
+    <div id="productsEmpty" class="empty-state" hidden>
+      <p>Noch keine Produkte. Beim Speichern einer Mahlzeit „Als Produkt speichern“ anhaken.</p>
+    </div>
+    <ul class="lib-list" id="productsList"></ul>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="productsClose">Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- Recipes sheet -->
+  <dialog id="recipesSheet" class="sheet" aria-labelledby="recipesTitle">
+    <span class="grabber" aria-hidden="true"></span>
+    <div class="sheet-head">
+      <h2 id="recipesTitle">Rezepte</h2>
+    </div>
+    <div class="btn-row" style="margin-bottom:12px">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnNewRecipe">+ Neues Rezept</button>
+    </div>
+    <div id="recipesEmpty" class="empty-state" hidden>
+      <p>Noch keine Rezepte. Zuerst Produkte speichern, dann hier zusammenstellen.</p>
+    </div>
+    <ul class="lib-list" id="recipesList"></ul>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="recipesClose">Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- Recipe editor sheet -->
+  <dialog id="recipeEditSheet" class="sheet" aria-labelledby="recipeEditTitle">
+    <form id="recipeEditForm">
+      <span class="grabber" aria-hidden="true"></span>
+      <div class="sheet-head">
+        <h2 id="recipeEditTitle">Rezept bearbeiten</h2>
+      </div>
+      <div class="field">
+        <label for="recipeName">Name</label>
+        <input type="text" id="recipeName" maxlength="120" required placeholder="z. B. Overnight Oats" />
+      </div>
+      <div class="field">
+        <label for="recipePortions">Portionen</label>
+        <input type="number" id="recipePortions" min="1" max="50" step="1" value="1" required />
+      </div>
+      <p class="field-label" style="margin-bottom:8px">Zutaten (aus Produkten)</p>
+      <div id="recipeIngredients" class="ing-list"></div>
+      <div class="field">
+        <label for="recipeAddProduct">Produkt hinzufügen</label>
+        <select id="recipeAddProduct">
+          <option value="">— wählen —</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="recipeAddGrams">Menge (g)</label>
+          <input type="number" id="recipeAddGrams" min="1" max="5000" step="1" value="100" />
+        </div>
+        <div class="field" style="justify-content:flex-end">
+          <label>&nbsp;</label>
+          <button type="button" class="btn btn-secondary" id="recipeAddBtn">Hinzufügen</button>
+        </div>
+      </div>
+      <div class="preview-scaled" id="recipePerPortion">
+        Pro Portion: <strong id="recipePerPortionText">—</strong>
+      </div>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-ghost" id="recipeEditCancel">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
