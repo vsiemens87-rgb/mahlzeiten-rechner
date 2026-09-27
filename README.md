@@ -30,10 +30,11 @@ Soft-Mikros (Salz-Max, Zucker hart/soft, Ballast-Min, Phase‑B-Caps) kommen nur
 Über **+** / **Hinzufügen**:
 
 1. **Barcode scannen** – empfohlen. Open Food Facts (Nährwerte pro 100 g inkl. Salz/Mikros).
-2. **Nährwerttabelle fotografieren** – Tabelle zuschneiden, dann OCR (Tesseract.js). Gutes Licht, scharfer Fokus.
-3. **Manuell** – Name und Werte selbst eingeben.
-4. **Gespeichertes Produkt** – aus lokaler Bibliothek wählen.
-5. **Rezepte** – Zutaten + Mengen → Portion berechnen → **Rezept essen**.
+2. **Produkt suchen** – Textsuche in Open Food Facts (ohne Barcode). DE-Namen bevorzugt; Treffer wählen → gleiches Korrektur-Sheet wie beim Scan.
+3. **Nährwerttabelle fotografieren** – Tabelle zuschneiden, dann OCR (Tesseract.js). Gutes Licht, scharfer Fokus.
+4. **Manuell** – Name und Werte selbst eingeben.
+5. **Gespeichertes Produkt** – aus lokaler Bibliothek wählen.
+6. **Rezepte** – Zutaten + Mengen → Portion berechnen → **Rezept essen**.
 
 ## Salz
 
@@ -66,10 +67,11 @@ Nach Scan/OCR/Rezept erscheint immer ein **Vorschau-Sheet** mit allen Feldern (i
 
 - OCR bleibt fehleranfällig trotz Zuschnitt/Kontrast.
 - Kamera braucht HTTPS + Berechtigung.
-- OFF deckt nicht jedes Produkt ab.
+- OFF deckt nicht jedes Produkt ab; Textsuche kann unvollständige oder falsch benannte Treffer liefern.
+- OFF-Suche: Rate-Limits der OFF-API; laufende Anfrage wird bei neuer Eingabe abgebrochen.
 - Browser-Daten löschen = alles weg.
 - Sync nur wenn `targets.json` erreichbar; Vitamin D / Zink-Caps werden gespeichert, aber nur angezeigt wenn später getrackt.
 
 ## Technik
 
-Statisch für GitHub Pages. CDN (lazy): html5-qrcode, Tesseract.js. OFF: `world.openfoodfacts.org/api/v2/product/{code}.json`. Version **v2.1.0**.
+Statisch für GitHub Pages. CDN (lazy): html5-qrcode, Tesseract.js – weiterhin nur on-demand, kein blockierendes Defer vor `app.js`. OFF Produkt: `world.openfoodfacts.org/api/v2/product/{code}.json`; Textsuche: `cgi/search.pl?json=1` (cc/lc=de). Version **v2.2.0**.

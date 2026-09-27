@@ -750,3 +750,16 @@ dialog.sheet:not([open]) {
 .micro-chip[data-tone="over"] strong { color: var(--danger); }
 .micro-chip[data-tone="low"] strong { color: var(--warn); }
 .phaseb-row { margin-top: 8px; }
+
+/* OFF text search */
+#searchResults {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.search-hit-brand {
+  color: var(--text-2);
+}
+.search-status-loading {
+  color: var(--accent);
+}

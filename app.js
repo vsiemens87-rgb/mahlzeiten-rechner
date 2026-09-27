@@ -1,4 +1,4 @@
-/* Mahlzeiten-Rechner v2.1 — Ziel-Sync (targets.json), salt, OCR, products/recipes, micros */
+/* Mahlzeiten-Rechner v2.2 — Ziel-Sync, OFF text search, salt, OCR, products/recipes, micros */
 (() => {
   "use strict";
 
@@ -6,7 +6,7 @@
   const STORAGE_KEY_V1 = "mahlzeiten_rechner_v1";
   const HISTORY_DAYS = 7;
   const SCHEMA_VERSION = 3;
-  const APP_VERSION = "2.1.0";
+  const APP_VERSION = "2.2.0";
 
   const DEFAULT_GOALS = { kcal: 2200, protein: 160, carbs: 200, fat: 70 };
   const DEFAULT_DAY_TYPE = "training";
@@ -108,6 +108,7 @@
   const ocrSheet = $("#ocrSheet");
   const cropSheet = $("#cropSheet");
   const productsSheet = $("#productsSheet");
+  const searchSheet = $("#searchSheet");
   const recipesSheet = $("#recipesSheet");
   const recipeEditSheet = $("#recipeEditSheet");
   const ocrFileInput = $("#ocrFileInput");
@@ -765,6 +766,7 @@
 
   function sourceLabel(s) {
     if (s === "barcode") return "Barcode";
+    if (s === "search") return "OFF-Suche";
     if (s === "ocr") return "OCR";
     if (s === "product") return "Produkt";
     if (s === "recipe") return "Rezept";
@@ -859,13 +861,15 @@
     $("#sourceBadge").textContent =
       pendingSource === "barcode"
         ? `Barcode${pendingBarcode ? " · " + pendingBarcode : ""} · Open Food Facts`
-        : pendingSource === "ocr"
-          ? "OCR · bitte korrigieren"
-          : pendingSource === "product"
-            ? "Gespeichertes Produkt"
-            : pendingSource === "recipe"
-              ? "Rezept · 1 Portion"
-              : "Manuell";
+        : pendingSource === "search"
+          ? `Suche${pendingBarcode ? " · " + pendingBarcode : ""} · Open Food Facts`
+          : pendingSource === "ocr"
+            ? "OCR · bitte korrigieren"
+            : pendingSource === "product"
+              ? "Gespeichertes Produkt"
+              : pendingSource === "recipe"
+                ? "Rezept · 1 Portion"
+                : "Manuell";
 
     const failNote = $("#ocrFailNote");
     if (data.ocrFailed) {
@@ -1108,6 +1112,40 @@
     };
   }
 
+  function openOffProductPreview(p, code, source) {
+    const nuts = extractOffNutrients(p.nutriments || {});
+    const name =
+      pickLocale(p, "product_name") ||
+      p.product_name ||
+      p.generic_name ||
+      (code ? `Produkt ${code}` : "Produkt");
+
+    const missing =
+      nuts.kcal == null || nuts.protein == null || nuts.carbs == null || nuts.fat == null;
+    if (missing) toast("Nährwerte unvollständig – bitte ergänzen");
+
+    openPreview({
+      source: source || "barcode",
+      barcode: code || undefined,
+      name,
+      kcal: nuts.kcal ?? 0,
+      protein: nuts.protein ?? 0,
+      carbs: nuts.carbs ?? 0,
+      fat: nuts.fat ?? 0,
+      sugar: nuts.sugar ?? 0,
+      satFat: nuts.satFat ?? 0,
+      fiber: nuts.fiber ?? 0,
+      salt: nuts.salt ?? 0,
+      saltConvertedFromSodium: nuts.saltConvertedFromSodium,
+      vitaminC: nuts.vitaminC,
+      calcium: nuts.calcium,
+      iron: nuts.iron,
+      magnesium: nuts.magnesium,
+      potassium: nuts.potassium,
+      grams: 100,
+    });
+  }
+
   async function fetchOffProduct(code) {
     try {
       const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`;
@@ -1127,40 +1165,8 @@
         });
         return;
       }
-      const p = data.product;
-      const nuts = extractOffNutrients(p.nutriments || {});
-      const name =
-        pickLocale(p, "product_name") ||
-        p.product_name ||
-        p.generic_name ||
-        `Produkt ${code}`;
-
-      const missing =
-        nuts.kcal == null || nuts.protein == null || nuts.carbs == null || nuts.fat == null;
-
       await stopBarcodeScan();
-      if (missing) toast("Nährwerte unvollständig – bitte ergänzen");
-
-      openPreview({
-        source: "barcode",
-        barcode: code,
-        name,
-        kcal: nuts.kcal ?? 0,
-        protein: nuts.protein ?? 0,
-        carbs: nuts.carbs ?? 0,
-        fat: nuts.fat ?? 0,
-        sugar: nuts.sugar ?? 0,
-        satFat: nuts.satFat ?? 0,
-        fiber: nuts.fiber ?? 0,
-        salt: nuts.salt ?? 0,
-        saltConvertedFromSodium: nuts.saltConvertedFromSodium,
-        vitaminC: nuts.vitaminC,
-        calcium: nuts.calcium,
-        iron: nuts.iron,
-        magnesium: nuts.magnesium,
-        potassium: nuts.potassium,
-        grams: 100,
-      });
+      openOffProductPreview(data.product, code, "barcode");
     } catch (err) {
       console.error(err);
       await stopBarcodeScan();
@@ -1185,7 +1191,192 @@
     );
   }
 
+  // —— OFF text product search ——
+  let offSearchAbort = null;
+  let offSearchTimer = null;
+  let offSearchSeq = 0;
+
+  $("#btnSearchProduct").addEventListener("click", () => {
+    if (!searchSheet.showModal) {
+      toast("Dialog nicht unterstützt – Browser aktualisieren");
+      return;
+    }
+    resetSearchSheet();
+    searchSheet.showModal();
+    const input = $("#offSearchInput");
+    setTimeout(() => input && input.focus(), 50);
+  });
+  $("#searchClose").addEventListener("click", () => closeSearchSheet());
+  searchSheet.addEventListener("close", () => {
+    abortOffSearch();
+    if (offSearchTimer) {
+      clearTimeout(offSearchTimer);
+      offSearchTimer = null;
+    }
+  });
+
+  $("#offSearchInput").addEventListener("input", () => {
+    scheduleOffSearch();
+  });
+  $("#offSearchInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (offSearchTimer) {
+        clearTimeout(offSearchTimer);
+        offSearchTimer = null;
+      }
+      runOffSearch($("#offSearchInput").value);
+    }
+  });
+
+  function abortOffSearch() {
+    if (offSearchAbort) {
+      try { offSearchAbort.abort(); } catch (_) {}
+      offSearchAbort = null;
+    }
+  }
+
+  function resetSearchSheet() {
+    abortOffSearch();
+    if (offSearchTimer) {
+      clearTimeout(offSearchTimer);
+      offSearchTimer = null;
+    }
+    $("#offSearchInput").value = "";
+    $("#searchResults").innerHTML = "";
+    $("#searchEmpty").hidden = true;
+    $("#searchError").hidden = true;
+    const st = $("#searchStatus");
+    st.textContent = "Mindestens 2 Zeichen eingeben.";
+    st.classList.remove("search-status-loading");
+  }
+
+  function closeSearchSheet() {
+    abortOffSearch();
+    if (searchSheet.open) searchSheet.close();
+  }
+
+  function scheduleOffSearch() {
+    if (offSearchTimer) clearTimeout(offSearchTimer);
+    offSearchTimer = setTimeout(() => {
+      offSearchTimer = null;
+      runOffSearch($("#offSearchInput").value);
+    }, 350);
+  }
+
+  function setSearchStatus(text, loading) {
+    const st = $("#searchStatus");
+    st.textContent = text;
+    st.classList.toggle("search-status-loading", !!loading);
+  }
+
+  function offHitKcal(n) {
+    if (!n) return null;
+    if (n["energy-kcal_100g"] != null) return num(n["energy-kcal_100g"]);
+    if (n["energy-kcal"] != null) return num(n["energy-kcal"]);
+    if (n["energy_100g"] != null) return num(n["energy_100g"]) / 4.184;
+    return null;
+  }
+
+  function renderSearchHits(products) {
+    const ul = $("#searchResults");
+    ul.innerHTML = "";
+    products.forEach((p, i) => {
+      const code = String(p.code || "").trim();
+      const name =
+        pickLocale(p, "product_name") ||
+        p.product_name ||
+        p.generic_name ||
+        (code ? `Produkt ${code}` : "Unbenannt");
+      const brand = (p.brands || "").split(",")[0].trim();
+      const kcal = offHitKcal(p.nutriments || {});
+      const kcalTxt = kcal != null ? `${fmt(kcal, 0)} kcal / 100 g` : "kcal unbekannt";
+      const meta = [brand || null, kcalTxt].filter(Boolean).join(" · ");
+      const li = document.createElement("li");
+      li.className = "lib-item";
+      li.innerHTML = `<button type="button" class="lib-main" data-search-idx="${i}">
+            <strong>${escapeHtml(name)}</strong>
+            <span>${escapeHtml(meta)}</span>
+          </button>`;
+      ul.appendChild(li);
+    });
+    ul.querySelectorAll("[data-search-idx]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-search-idx"));
+        const p = products[idx];
+        if (!p) return;
+        closeSearchSheet();
+        openOffProductPreview(p, String(p.code || "").trim() || undefined, "search");
+      });
+    });
+  }
+
+  async function runOffSearch(raw) {
+    const q = String(raw || "").trim();
+    $("#searchEmpty").hidden = true;
+    $("#searchError").hidden = true;
+
+    if (q.length < 2) {
+      abortOffSearch();
+      $("#searchResults").innerHTML = "";
+      setSearchStatus("Mindestens 2 Zeichen eingeben.", false);
+      return;
+    }
+
+    abortOffSearch();
+    const ctrl = new AbortController();
+    offSearchAbort = ctrl;
+    const seq = ++offSearchSeq;
+    setSearchStatus("Suche …", true);
+    $("#searchResults").innerHTML = "";
+
+    try {
+      const params = new URLSearchParams({
+        search_terms: q,
+        search_simple: "1",
+        action: "process",
+        json: "1",
+        page_size: "20",
+        page: "1",
+        cc: "de",
+        lc: "de",
+      });
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?${params.toString()}`;
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (seq !== offSearchSeq) return;
+
+      const products = Array.isArray(data.products) ? data.products : [];
+      if (!products.length) {
+        setSearchStatus(`Keine Treffer für „${q}“.`, false);
+        $("#searchEmpty").hidden = false;
+        return;
+      }
+      const count = data.count != null ? data.count : products.length;
+      setSearchStatus(
+        `${products.length} Treffer${count > products.length ? ` (von ${count})` : ""} · tippen zum Auswählen`,
+        false
+      );
+      renderSearchHits(products);
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      console.error(err);
+      if (seq !== offSearchSeq) return;
+      setSearchStatus("Suche fehlgeschlagen.", false);
+      $("#searchError").hidden = false;
+      $("#searchErrorText").textContent =
+        "Open-Food-Facts-Suche fehlgeschlagen. Netzwerk prüfen oder später erneut versuchen.";
+    } finally {
+      if (offSearchAbort === ctrl) offSearchAbort = null;
+    }
+  }
+
   // —— OCR: crop + preprocess ——
+
   $("#btnOcrPhoto").addEventListener("click", () => {
     ocrFileInput.value = "";
     ocrFileInput.click();

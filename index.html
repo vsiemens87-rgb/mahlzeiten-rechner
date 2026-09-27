@@ -15,8 +15,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.1.0" />
-  <script src="app.js?v=2.1.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=2.2.0" />
+  <script src="app.js?v=2.2.0" defer></script>
 </head>
 <body>
   <div class="app">
@@ -121,7 +121,7 @@
 
       <!-- HINZUFÜGEN -->
       <section id="panel-add" class="panel" aria-label="Hinzufügen">
-        <p class="calm-note" style="margin-bottom:14px">Barcode (empfohlen), Foto der Nährwerttabelle oder manuell – vor dem Speichern immer korrigierbar.</p>
+        <p class="calm-note" style="margin-bottom:14px">Barcode oder Produktsuche (Open Food Facts), Foto der Nährwerttabelle oder manuell – vor dem Speichern immer korrigierbar.</p>
         <div class="add-stack">
           <button type="button" class="action-card" id="btnScanBarcode">
             <span class="action-ico" aria-hidden="true">
@@ -130,6 +130,18 @@
             <span class="action-body">
               <strong>Barcode scannen</strong>
               <span>Open Food Facts · primärer Weg</span>
+            </span>
+            <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+
+
+          <button type="button" class="action-card" id="btnSearchProduct">
+            <span class="action-ico" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16.5 16.5L21 21"/></svg>
+            </span>
+            <span class="action-body">
+              <strong>Produkt suchen</strong>
+              <span>Open Food Facts · Textsuche (ohne Barcode)</span>
             </span>
             <svg class="ico action-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
           </button>
@@ -229,7 +241,7 @@
             Salz aus OFF: <code>salt_100g</code>, sonst Natrium × 2.5. Mikros Phase B nur anzeigen, nie erfinden.
           </p>
         </div>
-        <footer class="app-footer">v2.1.0 · Ziele-Sync · OFF + Tesseract CDN</footer>
+        <footer class="app-footer">v2.2.0 · Ziele-Sync · OFF-Suche + Tesseract CDN</footer>
       </section>
     </main>
 
@@ -262,6 +274,30 @@
     <div class="scan-wrap" id="qr-reader"></div>
     <div class="sheet-actions">
       <button type="button" class="btn btn-ghost" id="scanCancel">Abbrechen</button>
+    </div>
+  </dialog>
+
+
+  <!-- OFF Product Search Sheet -->
+  <dialog id="searchSheet" class="sheet" aria-labelledby="searchTitle">
+    <span class="grabber" aria-hidden="true"></span>
+    <div class="sheet-head">
+      <h2 id="searchTitle">Produkt suchen</h2>
+    </div>
+    <div class="field">
+      <label for="offSearchInput">Produktname</label>
+      <input type="search" id="offSearchInput" maxlength="80" placeholder="z. B. Skyr Natur" autocomplete="off" enterkeyhint="search" />
+    </div>
+    <p class="scan-hint" id="searchStatus" role="status">Mindestens 2 Zeichen eingeben.</p>
+    <div id="searchEmpty" class="empty-state" hidden>
+      <p>Keine Treffer. Anderen Begriff versuchen oder Barcode scannen.</p>
+    </div>
+    <div id="searchError" class="empty-state" hidden>
+      <p id="searchErrorText">Suche fehlgeschlagen.</p>
+    </div>
+    <ul class="lib-list" id="searchResults" aria-live="polite"></ul>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="searchClose">Schließen</button>
     </div>
   </dialog>
 
