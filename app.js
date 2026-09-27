@@ -686,18 +686,20 @@
       return null;
     }
 
-    // Energy: prefer kcal over kJ
-    let kcal = findNear(
-      ["brennwert", "energie", "energy", "kalorien"],
-      "kcal|kalorien"
-    );
-    // Sometimes "123 kcal" appears after kJ
-    const kcalDirect = scope.match(/([\d]+(?:[.,]\d+)?)\s*kcal/i);
-    if (kcalDirect) kcal = num(kcalDirect[1]);
-    // If only kJ: convert
-    if (kcal == null) {
-      const kj = scope.match(/([\d]+(?:[.,]\d+)?)\s*k(?:j|J)\b/);
+    // Energy: prefer explicit kcal; convert kJ if needed
+    let kcal = null;
+    const kcalDirect = scope.match(/([\d]+(?:[.,]\d+)?)\s*kcal\b/i)
+      || text.match(/([\d]+(?:[.,]\d+)?)\s*kcal\b/i);
+    if (kcalDirect) {
+      kcal = num(kcalDirect[1]);
+    } else {
+      const kj = scope.match(/([\d]+(?:[.,]\d+)?)\s*kJ\b/i)
+        || text.match(/([\d]+(?:[.,]\d+)?)\s*kJ\b/i);
       if (kj) kcal = round1(num(kj[1]) / 4.184);
+      else {
+        // fallback: number after Brennwert/Energie without unit
+        kcal = findNear(["brennwert", "energie", "energy", "kalorien"], "kcal|kalorien|kj");
+      }
     }
 
     const protein = findNear(
